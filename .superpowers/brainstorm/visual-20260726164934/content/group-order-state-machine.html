@@ -1,0 +1,112 @@
+<h2>先支付后成团：交易状态机与补偿边界</h2>
+<p class="subtitle">MySQL 保存最终业务事实，Redis 负责热点原子预占；每次状态迁移使用版本号 CAS，并在同一事务写入 Outbox。</p>
+
+<div class="section">
+  <div class="label">正常主链路</div>
+  <div class="cards" style="grid-template-columns:repeat(5,1fr)">
+    <div class="card"><div class="card-body"><h3>1. 试算</h3><p>营销服务返回 promotionSnapshotId、应付金额和过期时间。</p></div></div>
+    <div class="card"><div class="card-body"><h3>2. 原子预占</h3><p>Redis Lua 校验资格，锁活动 SKU 库存、团名额和参与次数，返回 reserveToken。</p></div></div>
+    <div class="card"><div class="card-body"><h3>3. 待支付</h3><p>订单落库为 PENDING_PAYMENT，并事务写入 Outbox 与支付截止任务。</p></div></div>
+    <div class="card"><div class="card-body"><h3>4. 已支付待成团</h3><p>回调幂等后迁移为 PAID_WAITING_GROUP；拼团服务累计已支付成员。</p></div></div>
+    <div class="card"><div class="card-body"><h3>5. 成团确认</h3><p>达到目标人数：库存预占转实扣，订单变为 CONFIRMED，结算服务生成待结算账单。</p></div></div>
+  </div>
+</div>
+
+<div style="text-align:center;font-size:25px;margin:8px 0">PENDING_PAYMENT → PAID_WAITING_GROUP → CONFIRMED</div>
+
+<div class="split">
+  <div class="mockup">
+    <div class="mockup-header">订单聚合状态</div>
+    <div class="mockup-body">
+      <p><strong>PENDING_PAYMENT</strong>：库存和名额已预占，等待支付。</p>
+      <p><strong>PAID_WAITING_GROUP</strong>：支付有效，等待达到成团人数。</p>
+      <p><strong>CONFIRMED</strong>：团成功、库存实扣、可进入提货履约。</p>
+      <p><strong>CLOSING / CLOSED</strong>：未支付超时，释放全部预占。</p>
+      <p><strong>REFUNDING / REFUNDED</strong>：已支付但拼团失败，退款后释放资源。</p>
+    </div>
+  </div>
+  <div class="mockup">
+    <div class="mockup-header">拼团聚合状态</div>
+    <div class="mockup-body">
+      <p><strong>RECRUITING</strong>：只统计已支付且回调有效的成员。</p>
+      <p><strong>SUCCEEDED</strong>：CAS 锁定一次，发布 GroupSucceeded。</p>
+      <p><strong>FAILED</strong>：截止时间人数不足，发布 GroupFailed。</p>
+      <p>同一 groupId 的事件进入同一 Kafka Partition，聚合内有序。</p>
+      <p>团状态一旦终态不可逆，迟到支付进入退款支线。</p>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:24px">
+  <div class="label">四条异常与竞态支线</div>
+  <div class="cards" style="grid-template-columns:repeat(4,1fr)">
+    <div class="card">
+      <div class="card-body">
+        <h3>订单落库失败</h3>
+        <p>reserveToken 未绑定订单；立即执行 Lua 补偿。若进程宕机，由预占 TTL 与库存校正任务兜底。</p>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-body">
+        <h3>未支付超时</h3>
+        <p>CAS 将订单迁移到 CLOSING；关闭支付单后释放库存、名额、参与次数，最终 CLOSED。</p>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-body">
+        <h3>成团超时</h3>
+        <p>团变为 FAILED；未支付订单关闭，已支付订单进入 REFUNDING，退款成功后释放预占。</p>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-body">
+        <h3>支付回调迟到</h3>
+        <p>只有订单仍待支付且团仍招募时才能确认支付；否则记录 LatePaymentDetected 并自动原路退款。</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="label">可靠性机制</div>
+  <div class="mockup">
+    <div class="mockup-header">截止任务不是“假装 Kafka 原生支持延迟消息”</div>
+    <div class="mockup-body">
+      <p>订单/拼团在本地事务写入 <strong>deadline_task</strong>；Redis ZSet 作为近期任务加速索引，到期后发布 Kafka 超时事件。</p>
+      <p>数据库定时扫描补发遗漏任务；消费端 Inbox 记录 eventId，业务表唯一键与 version 再做双重幂等。</p>
+      <p>失败依次进入指数退避重试 Topic、死信 Topic；运营台可查看并执行受审计的人工重放。</p>
+    </div>
+  </div>
+</div>
+
+<div class="pros-cons">
+  <div class="pros">
+    <h4>状态不变量</h4>
+    <ul>
+      <li>有效扣减量 = 预占量 + 已确认量，且永不为负</li>
+      <li>同一用户同一活动只有一个有效参与记录</li>
+      <li>一次支付最多确认一个订单，一笔退款最多成功一次</li>
+      <li>结算只接受 CONFIRMED 且未退款的订单明细</li>
+    </ul>
+  </div>
+  <div class="cons">
+    <h4>首版明确不做</h4>
+    <ul>
+      <li>跨仓调拨与提货点独立库存</li>
+      <li>真实第三方资金分账</li>
+      <li>同一活动混用先成团后支付</li>
+      <li>依赖分布式事务框架锁住整条链路</li>
+    </ul>
+  </div>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="approve-state-machine" onclick="toggleSelect(this)">
+    <div class="letter">✓</div>
+    <div class="content"><h3>状态机正确</h3><p>按此继续定义营销规则、事件契约与 AI 运维边界。</p></div>
+  </div>
+  <div class="option" data-choice="revise-state-machine" onclick="toggleSelect(this)">
+    <div class="letter">↻</div>
+    <div class="content"><h3>需要调整</h3><p>点击后在对话中说明需要改变的交易或补偿语义。</p></div>
+  </div>
+</div>

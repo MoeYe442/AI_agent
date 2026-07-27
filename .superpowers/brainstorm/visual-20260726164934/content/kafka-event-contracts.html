@@ -1,0 +1,96 @@
+<h2>Kafka 事件契约与可靠投递</h2>
+<p class="subtitle">交付语义为 at-least-once；不追求“消息只到一次”，而是通过 Outbox、Inbox、业务唯一键和状态机让重复到达无副作用。</p>
+
+<div class="section">
+  <div class="label">核心事件流</div>
+  <div class="cards" style="grid-template-columns:repeat(5,1fr)">
+    <div class="card"><div class="card-body"><h3>OrderCreated</h3><p>订单服务<br>key = orderId</p></div></div>
+    <div class="card"><div class="card-body"><h3>PaymentSucceeded</h3><p>支付服务<br>key = orderId</p></div></div>
+    <div class="card"><div class="card-body"><h3>MemberPaid</h3><p>拼团服务<br>key = groupId</p></div></div>
+    <div class="card"><div class="card-body"><h3>GroupSucceeded</h3><p>拼团服务<br>key = groupId</p></div></div>
+    <div class="card"><div class="card-body"><h3>InventoryConfirmed</h3><p>库存服务<br>key = orderId</p></div></div>
+  </div>
+  <div style="text-align:center;font-size:24px;margin:10px 0">订单创建 → 支付成功 → 已支付成员入团 → 成团 → 库存实扣 → 结算生成</div>
+  <div class="cards" style="grid-template-columns:repeat(4,1fr)">
+    <div class="card"><div class="card-body"><h3>GroupFailed</h3><p>触发已支付订单退款、未支付订单关闭。</p></div></div>
+    <div class="card"><div class="card-body"><h3>RefundSucceeded</h3><p>订单进入 REFUNDED，库存服务释放预占。</p></div></div>
+    <div class="card"><div class="card-body"><h3>ReservationReleased</h3><p>记录资源已释放，校正任务据此收敛。</p></div></div>
+    <div class="card"><div class="card-body"><h3>SettlementCreated</h3><p>生成商家应结算、平台费与团长佣金明细。</p></div></div>
+  </div>
+</div>
+
+<div class="split">
+  <div class="mockup">
+    <div class="mockup-header">统一事件信封 EventEnvelope&lt;T&gt;</div>
+    <div class="mockup-body">
+      <p><strong>eventId</strong>：UUIDv7，全局去重键</p>
+      <p><strong>eventType / eventVersion</strong>：事件名与整数版本</p>
+      <p><strong>aggregateType / aggregateId</strong>：来源聚合</p>
+      <p><strong>occurredAt / producer</strong>：UTC 时间与服务名</p>
+      <p><strong>traceId / causationId / correlationId</strong>：链路与因果关系</p>
+      <p><strong>payload</strong>：不可变业务快照；金额使用分为单位的 long</p>
+    </div>
+  </div>
+  <div class="mockup">
+    <div class="mockup-header">Topic 与分区约束</div>
+    <div class="mockup-body">
+      <p>按领域使用版本化 Topic，例如 <strong>trade.order-events.v1</strong>。</p>
+      <p>订单内顺序使用 orderId；团内顺序使用 groupId。跨聚合不承诺全局顺序。</p>
+      <p>消费者必须根据当前数据库状态决定“应用、忽略或补偿”，不能依赖理想到达顺序。</p>
+      <p>契约只允许向后兼容地新增可选字段；破坏性变化发布 v2 Topic。</p>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:24px">
+  <div class="label">生产端：业务与事件同事务</div>
+  <div class="mockup">
+    <div class="mockup-header">MySQL 本地事务 → Outbox Relay → Kafka</div>
+    <div class="mockup-body">
+      <p>业务表和 <strong>event_outbox</strong> 同事务提交；Relay 使用 <strong>SELECT ... FOR UPDATE SKIP LOCKED</strong> 批量领取待投递事件。</p>
+      <p>Kafka broker 确认后标记 SENT；发送结果不确定时允许再次发送，由消费者幂等吸收。超过重试阈值标记 FAILED 并告警，补偿扫描继续接管。</p>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="label">消费端：幂等、重试与人工重放</div>
+  <div class="cards" style="grid-template-columns:repeat(4,1fr)">
+    <div class="card"><div class="card-body"><h3>1. Inbox 去重</h3><p>业务事务先插入 event_inbox(eventId, consumer) 唯一键；已存在直接视为成功。</p></div></div>
+    <div class="card"><div class="card-body"><h3>2. 业务幂等</h3><p>支付单号、reserveToken、结算来源明细等唯一键提供第二道保护。</p></div></div>
+    <div class="card"><div class="card-body"><h3>3. 手动提交</h3><p>业务事务提交后再 ACK Offset；崩溃窗口造成重投而不是数据丢失。</p></div></div>
+    <div class="card"><div class="card-body"><h3>4. 重试 / DLT</h3><p>瞬时错误进入指数退避 Topic；不可恢复错误进 DLT，运营台按 eventId 审计重放。</p></div></div>
+  </div>
+</div>
+
+<div class="pros-cons">
+  <div class="pros">
+    <h4>必须监控</h4>
+    <ul>
+      <li>Outbox 最老待发送时长与失败数</li>
+      <li>消费者 Lag、重试速率、DLT 堆积</li>
+      <li>重复事件命中率与状态冲突次数</li>
+      <li>库存预占与订单状态不一致数量</li>
+    </ul>
+  </div>
+  <div class="cons">
+    <h4>禁止做法</h4>
+    <ul>
+      <li>业务提交后直接“尽力而为”发送 Kafka</li>
+      <li>把自动提交 Offset 当作处理成功</li>
+      <li>用同一个 Partition 保证所有业务全局有序</li>
+      <li>直接修改 DLT 数据而不保留重放审计</li>
+    </ul>
+  </div>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="approve-events" onclick="toggleSelect(this)">
+    <div class="letter">✓</div>
+    <div class="content"><h3>事件设计正确</h3><p>按此继续确认 AI 智能运维和分阶段交付。</p></div>
+  </div>
+  <div class="option" data-choice="revise-events" onclick="toggleSelect(this)">
+    <div class="letter">↻</div>
+    <div class="content"><h3>需要调整</h3><p>点击后说明希望改变的事件、分区键或可靠性机制。</p></div>
+  </div>
+</div>

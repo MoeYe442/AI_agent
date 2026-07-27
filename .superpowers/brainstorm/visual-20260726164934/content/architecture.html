@@ -1,0 +1,71 @@
+<h2>企业知识工作台 - 推荐架构</h2>
+<p class="subtitle">Java 守住业务与权限边界，Python 负责 AI 编排与检索推理</p>
+
+<div class="section">
+  <div class="label">用户入口</div>
+  <div class="mockup">
+    <div class="mockup-header">Vue 3 + TypeScript 工作台</div>
+    <div class="mockup-body" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;text-align:center">
+      <div class="placeholder">知识库</div>
+      <div class="placeholder">Agent 对话</div>
+      <div class="placeholder">报告任务</div>
+      <div class="placeholder">管理与审计</div>
+    </div>
+  </div>
+</div>
+
+<div style="text-align:center;font-size:28px;margin:8px 0">&#8595; HTTPS / SSE</div>
+
+<div class="split">
+  <div class="mockup">
+    <div class="mockup-header">Spring Boot 平台服务</div>
+    <div class="mockup-body">
+      <h3>可信业务控制面</h3>
+      <ul>
+        <li>登录、管理员 / 员工权限</li>
+        <li>知识库与文档生命周期</li>
+        <li>Agent 任务、状态、报告版本</li>
+        <li>调用授权、审计日志、流式转发</li>
+      </ul>
+      <p><strong>原则：</strong>Python 不能绕过 Java 直接决定用户权限。</p>
+    </div>
+  </div>
+  <div class="mockup">
+    <div class="mockup-header">FastAPI + LangGraph Agent 服务</div>
+    <div class="mockup-body">
+      <h3>AI 执行面</h3>
+      <ol>
+        <li>规划 Agent：拆解报告任务</li>
+        <li>检索 Agent：混合检索并整理证据</li>
+        <li>撰写 Agent：生成带引用初稿</li>
+        <li>审核 Agent：检查引用与完整性</li>
+      </ol>
+      <p><strong>原则：</strong>图状态可恢复，每一步都有结构化输入输出。</p>
+    </div>
+  </div>
+</div>
+
+<div style="text-align:center;font-size:28px;margin:8px 0">&#8595; 内部 REST + SSE 事件</div>
+
+<div class="cards" style="grid-template-columns:repeat(3,1fr)">
+  <div class="card">
+    <div class="card-body"><h3>PostgreSQL + pgvector</h3><p>用户、文档元数据、任务、审计、文本块与向量统一存储。</p></div>
+  </div>
+  <div class="card">
+    <div class="card-body"><h3>MinIO</h3><p>保存 PDF、Markdown、TXT 原文件与最终报告文件。</p></div>
+  </div>
+  <div class="card">
+    <div class="card-body"><h3>OpenAI 兼容模型端点</h3><p>聊天模型与嵌入模型通过配置切换，不写死供应商。</p></div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:24px">
+  <h3>核心数据流</h3>
+  <p><strong>上传：</strong>管理员上传文档 &#8594; Java 校验并保存 &#8594; Python 异步解析、切块、嵌入 &#8594; Java 展示索引状态。</p>
+  <p><strong>报告：</strong>员工提交主题 &#8594; Java 创建任务并授权知识库 &#8594; 多 Agent 逐步执行 &#8594; SSE 实时显示进度 &#8594; Java 持久化带引用报告与审计记录。</p>
+</div>
+
+<div class="pros-cons">
+  <div class="pros"><h4>MVP 优点</h4><ul><li>Java/Python 分工明确</li><li>多 Agent 可观测、可测试</li><li>单机 Docker Compose 可演示</li></ul></div>
+  <div class="cons"><h4>刻意不做</h4><ul><li>多租户与文档级 ACL</li><li>通用自主工具市场</li><li>消息队列与 Kubernetes</li></ul></div>
+</div>

@@ -1,0 +1,89 @@
+<h2>高并发社交拼团平台：总体架构</h2>
+<p class="subtitle">推荐方案：领域事件驱动 + 局部同步校验。Java 守住交易与权限边界，Python 负责只读智能诊断。</p>
+
+<div class="section">
+  <div class="label">体验与接入层</div>
+  <div class="cards" style="grid-template-columns:repeat(4,1fr)">
+    <div class="card"><div class="card-body"><h3>用户端</h3><p>Vue 3 + Vant<br>活动、开团、参团、支付、订单</p></div></div>
+    <div class="card"><div class="card-body"><h3>商家端</h3><p>商品、活动、订单、结算账单</p></div></div>
+    <div class="card"><div class="card-body"><h3>平台管理端</h3><p>审核、规则、异常订单、智能运维</p></div></div>
+    <div class="card"><div class="card-body"><h3>API Gateway</h3><p>JWT / RBAC、路由、限流、TraceId</p></div></div>
+  </div>
+</div>
+
+<div style="text-align:center;font-size:26px;margin:8px 0">↓ HTTPS / SSE</div>
+
+<div class="section">
+  <div class="label">Java 业务域 · Spring Boot 3.5 / Spring Cloud Alibaba 2025.0</div>
+  <div class="cards" style="grid-template-columns:repeat(4,1fr)">
+    <div class="card"><div class="card-body"><h3>用户服务</h3><p>消费者、团长、商家、运营 RBAC</p></div></div>
+    <div class="card"><div class="card-body"><h3>商品服务</h3><p>商家、SPU/SKU、上下架、提货点</p></div></div>
+    <div class="card"><div class="card-body"><h3>营销服务</h3><p>LiteFlow 规则编排、试算快照</p></div></div>
+    <div class="card"><div class="card-body"><h3>拼团服务</h3><p>团实例、成员、成团判定、超时</p></div></div>
+    <div class="card"><div class="card-body"><h3>订单服务</h3><p>订单状态机、价格快照、Outbox</p></div></div>
+    <div class="card"><div class="card-body"><h3>库存服务</h3><p>活动 SKU 库存池、预占/确认/释放</p></div></div>
+    <div class="card"><div class="card-body"><h3>支付服务</h3><p>模拟网关、回调幂等、退款</p></div></div>
+    <div class="card"><div class="card-body"><h3>结算服务</h3><p>商家应结算、平台费、团长佣金</p></div></div>
+  </div>
+</div>
+
+<div class="split">
+  <div class="mockup">
+    <div class="mockup-header">同步热路径：只保留必要校验</div>
+    <div class="mockup-body">
+      <p><strong>Gateway → 订单 → 营销试算 → Redis Lua 原子锁定</strong></p>
+      <p>Lua 一次完成资格、活动库存、团名额、参与次数与幂等键；成功后创建待支付订单。</p>
+      <p>OpenFeign 只用于查询与强一致前置校验，必须设置超时、隔离和降级。</p>
+    </div>
+  </div>
+  <div class="mockup">
+    <div class="mockup-header">异步交易链路：Kafka + Outbox / Inbox</div>
+    <div class="mockup-body">
+      <p><strong>支付成功 → 成团判定 → 库存确认 → 交易结算</strong></p>
+      <p>按 orderId 或 groupId 选择 Partition；消费者以 eventId + 业务唯一键幂等。</p>
+      <p>重试 Topic、死信 Topic、补偿扫描共同处理丢失、重复、乱序与宕机恢复。</p>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:24px">
+  <div class="label">平台能力与智能运维</div>
+  <div class="cards" style="grid-template-columns:repeat(4,1fr)">
+    <div class="card"><div class="card-body"><h3>基础设施</h3><p>Nacos、Sentinel、MySQL、Redis、Kafka</p></div></div>
+    <div class="card"><div class="card-body"><h3>可观测</h3><p>ELK、Prometheus、Grafana、TraceId</p></div></div>
+    <div class="card"><div class="card-body"><h3>Java MCP Server</h3><p>受控暴露日志、指标、健康状态与只读业务查询</p></div></div>
+    <div class="card"><div class="card-body"><h3>Python Agent</h3><p>FastAPI + LangGraph；证据聚合、根因候选、处置建议</p></div></div>
+  </div>
+</div>
+
+<div class="pros-cons">
+  <div class="pros">
+    <h4>第一阶段必须跑通</h4>
+    <ul>
+      <li>多商家商品与活动</li>
+      <li>先支付后成团完整状态机</li>
+      <li>零超卖、零重复参团</li>
+      <li>失败消息可补偿、交易可追踪</li>
+    </ul>
+  </div>
+  <div class="cons">
+    <h4>后续阶段演进</h4>
+    <ul>
+      <li>更多营销策略与 Nacos 热更新</li>
+      <li>性能基线对比与故障注入</li>
+      <li>AI Agent 自然语言诊断</li>
+      <li>不做多租户 SaaS 与真实资金渠道</li>
+    </ul>
+  </div>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="approve-architecture" onclick="toggleSelect(this)">
+    <div class="letter">✓</div>
+    <div class="content"><h3>架构边界正确</h3><p>按此继续细化交易状态机、事件契约和分阶段实施。</p></div>
+  </div>
+  <div class="option" data-choice="revise-architecture" onclick="toggleSelect(this)">
+    <div class="letter">↻</div>
+    <div class="content"><h3>需要调整</h3><p>点击后在对话中说明希望调整的服务边界或数据流。</p></div>
+  </div>
+</div>

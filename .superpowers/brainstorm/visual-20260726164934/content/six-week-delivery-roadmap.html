@@ -1,0 +1,102 @@
+<h2>个人作品集：6 周交付路线与验收</h2>
+<p class="subtitle">目标是可运行、可演示、可故障复现、可压测的工程闭环；八个业务边界独立进程，但用单仓库与统一脚手架控制个人开发成本。</p>
+
+<div class="section">
+  <div class="label">单仓库布局</div>
+  <div class="cards" style="grid-template-columns:repeat(4,1fr)">
+    <div class="card"><div class="card-body"><h3>platform-java</h3><p>Maven 多模块：Gateway、八个业务服务、MCP Server、契约与测试支持。</p></div></div>
+    <div class="card"><div class="card-body"><h3>ops-agent-python</h3><p>FastAPI、LangGraph、OpenAI 兼容模型接入、诊断评测集。</p></div></div>
+    <div class="card"><div class="card-body"><h3>web</h3><p>Vue 3 Monorepo：user-web 与 admin-web，共享 API SDK 和 UI 基础包。</p></div></div>
+    <div class="card"><div class="card-body"><h3>deploy / tests</h3><p>Docker Compose、Nacos 配置、可观测配置、契约/E2E/压测/故障脚本。</p></div></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="label">六周里程碑</div>
+  <div class="cards" style="grid-template-columns:repeat(3,1fr)">
+    <div class="card"><div class="card-body"><h3>第 1 周 · 基座</h3><p>Monorepo、Compose、Gateway、Nacos、JWT/RBAC、用户/商家模型、统一错误与 TraceId。</p></div></div>
+    <div class="card"><div class="card-body"><h3>第 2 周 · 商品营销库存</h3><p>商品与活动 SKU、LiteFlow 试算快照、活动库存池、Redis Lua 预占与补偿。</p></div></div>
+    <div class="card"><div class="card-body"><h3>第 3 周 · 拼团交易</h3><p>拼团/订单聚合、模拟支付、Outbox Relay、Kafka 事件、正常成团链路。</p></div></div>
+    <div class="card"><div class="card-body"><h3>第 4 周 · 逆向与前端</h3><p>超时关单、失败团退款、库存校正、商家/团长结算；用户端和管理端闭环。</p></div></div>
+    <div class="card"><div class="card-body"><h3>第 5 周 · 稳定性与压测</h3><p>Sentinel、线程池隔离、ELK、Prometheus/Grafana；基线对比、故障注入和调优。</p></div></div>
+    <div class="card"><div class="card-body"><h3>第 6 周 · AI 与交付</h3><p>Java MCP、Python Agent、五类诊断样例、演示数据、架构文档、压测报告和录屏脚本。</p></div></div>
+  </div>
+</div>
+
+<div class="split">
+  <div class="mockup">
+    <div class="mockup-header">Docker Compose 运行档位</div>
+    <div class="mockup-body">
+      <p><strong>core</strong>：MySQL、Redis、Kafka、Nacos、Gateway、八服务、前端。</p>
+      <p><strong>observability</strong>：在 core 上增加 Elasticsearch、Logstash、Kibana、Prometheus、Grafana。</p>
+      <p><strong>ai</strong>：在 observability 上增加 MCP Server 与 Python Agent。</p>
+      <p>单 MySQL 实例承载独立 schema/账号；服务禁止跨 schema 查询。</p>
+    </div>
+  </div>
+  <div class="mockup">
+    <div class="mockup-header">公共契约约束</div>
+    <div class="mockup-body">
+      <p>REST 统一 <strong>ApiResponse&lt;T&gt;</strong>、错误码与 <strong>Idempotency-Key</strong>。</p>
+      <p>金额统一使用 <strong>long cents</strong>，时间统一 UTC ISO-8601，外部 ID 按字符串传输。</p>
+      <p>Feign DTO 与 Kafka Event DTO 独立版本化，不共享领域实体或 MyBatis PO。</p>
+      <p>接口通过 OpenAPI 生成 TypeScript SDK；事件通过 JSON Schema 做兼容检查。</p>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:24px">
+  <div class="label">测试与验收金字塔</div>
+  <div class="cards" style="grid-template-columns:repeat(4,1fr)">
+    <div class="card"><div class="card-body"><h3>领域单测</h3><p>价格策略、状态迁移、退款/结算计算、重复与非法命令；不依赖 Spring 容器。</p></div></div>
+    <div class="card"><div class="card-body"><h3>集成与契约</h3><p>Testcontainers 启动 MySQL、Redis、Kafka；验证 Lua、Outbox/Inbox、DDL 唯一键和事件兼容。</p></div></div>
+    <div class="card"><div class="card-body"><h3>端到端与故障</h3><p>Playwright 覆盖开团到结算；注入重复回调、消费者宕机、Kafka 恢复和迟到支付。</p></div></div>
+    <div class="card"><div class="card-body"><h3>Agent 评测</h3><p>五类固定故障样例；每条事实必须引用工具证据，根因至少进入 Top-2，证据不足必须拒答。</p></div></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="label">1000 并发压测口径</div>
+  <div class="mockup">
+    <div class="mockup-header">同硬件、同数据、同脚本对比数据库锁基线与 Redis Lua 方案</div>
+    <div class="mockup-body">
+      <p>预置固定活动、库存、用户池和团规模；记录 CPU、内存、容器配额、JVM 参数、Kafka Partition 数和数据库配置。</p>
+      <p>每轮先预热 5 分钟，再以 1000 VU 测量 10 分钟，至少运行 3 轮，报告中位 TPS、P95/P99、错误率和资源利用率。</p>
+      <p><strong>硬性正确性门槛：</strong>零超卖、零重复有效参团、支付/退款/结算无重复记账，停止流量后补偿任务使不一致数收敛为 0。</p>
+      <p><strong>性能表达：</strong>530→830 TPS 和 56.6% 作为待复现实验目标；只有真实报告达到后才能写成项目结果。</p>
+    </div>
+  </div>
+</div>
+
+<div class="pros-cons">
+  <div class="pros">
+    <h4>作品集最终证据</h4>
+    <ul>
+      <li>一键启动与演示数据脚本</li>
+      <li>架构图、状态机、事件目录</li>
+      <li>Grafana/Kibana 截图与故障复盘</li>
+      <li>基线/优化压测原始数据和报告</li>
+      <li>AI 诊断报告与评测结果</li>
+    </ul>
+  </div>
+  <div class="cons">
+    <h4>范围控制</h4>
+    <ul>
+      <li>不做 Kubernetes、Seata、多租户 SaaS</li>
+      <li>不接真实支付和真实资金分账</li>
+      <li>不做仓库调拨与提货点库存</li>
+      <li>不做自动修复型 Agent</li>
+      <li>不把示例 TPS 冒充实测结果</li>
+    </ul>
+  </div>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="approve-roadmap" onclick="toggleSelect(this)">
+    <div class="letter">✓</div>
+    <div class="content"><h3>路线与验收正确</h3><p>设计全部确认，可生成决策完整的正式实施计划。</p></div>
+  </div>
+  <div class="option" data-choice="revise-roadmap" onclick="toggleSelect(this)">
+    <div class="letter">↻</div>
+    <div class="content"><h3>需要调整</h3><p>点击后说明希望修改的周期、交付顺序或验收指标。</p></div>
+  </div>
+</div>

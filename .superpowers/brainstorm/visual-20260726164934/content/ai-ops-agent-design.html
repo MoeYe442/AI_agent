@@ -1,0 +1,95 @@
+<h2>AI 智能运维：受控 MCP + 证据驱动 Agent</h2>
+<p class="subtitle">Java MCP Server 是唯一数据与权限边界；Python Agent 没有 ELK、Prometheus、MySQL 或 Nacos 的直连凭据。</p>
+
+<div class="section">
+  <div class="label">请求与诊断流程</div>
+  <div class="cards" style="grid-template-columns:repeat(5,1fr)">
+    <div class="card"><div class="card-body"><h3>1. 用户提问</h3><p>“为什么近 15 分钟拼团成功率下降？”</p></div></div>
+    <div class="card"><div class="card-body"><h3>2. 规划</h3><p>识别时间窗、服务、指标与业务聚合，生成有限工具调用计划。</p></div></div>
+    <div class="card"><div class="card-body"><h3>3. 采证</h3><p>通过 MCP 查询指标、日志、TraceId 关联记录与脱敏业务快照。</p></div></div>
+    <div class="card"><div class="card-body"><h3>4. 关联</h3><p>按时间、traceId、orderId、groupId 交叉验证异常是否同源。</p></div></div>
+    <div class="card"><div class="card-body"><h3>5. 报告</h3><p>输出事实、根因候选、置信度、缺失证据与人工处置建议。</p></div></div>
+  </div>
+</div>
+
+<div class="split">
+  <div class="mockup">
+    <div class="mockup-header">Java MCP Server · Streamable HTTP /mcp</div>
+    <div class="mockup-body">
+      <p><strong>search_logs</strong>：服务、级别、关键词、traceId、时间窗、上限</p>
+      <p><strong>query_metric</strong>：指标白名单、标签、时间窗、步长</p>
+      <p><strong>get_service_health</strong>：实例、Sentinel 状态、依赖健康</p>
+      <p><strong>get_kafka_lag</strong>：Topic、消费组、Partition Lag</p>
+      <p><strong>get_trade_snapshot</strong>：订单/团/预占的脱敏状态快照</p>
+      <p><strong>correlate_trace_logs</strong>：按 TraceId 汇总 HTTP 与 Kafka 日志</p>
+    </div>
+  </div>
+  <div class="mockup">
+    <div class="mockup-header">Python FastAPI + LangGraph</div>
+    <div class="mockup-body">
+      <p><strong>Intent Router</strong>：指标异常、链路错误、交易不一致、Kafka 堆积</p>
+      <p><strong>Evidence Planner</strong>：限定最多 12 次工具调用、15 分钟默认窗口</p>
+      <p><strong>Evidence Collector</strong>：并行调用独立工具，单次超时与总预算受控</p>
+      <p><strong>Diagnosis Synthesizer</strong>：只根据工具结果形成根因候选</p>
+      <p><strong>Verifier</strong>：检查每条结论是否带证据引用；不足时明确拒答</p>
+      <p><strong>SSE Presenter</strong>：向管理端流式返回步骤、证据和最终报告</p>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:24px">
+  <div class="label">安全与审计护栏</div>
+  <div class="cards" style="grid-template-columns:repeat(4,1fr)">
+    <div class="card"><div class="card-body"><h3>独立身份</h3><p>MCP 使用专用 audience 的短期服务令牌；禁止把用户或下游令牌直接透传。</p></div></div>
+    <div class="card"><div class="card-body"><h3>服务端授权</h3><p>角色、商家数据范围和查询参数均由 Java 重新校验，不能信任模型提供的 merchantId。</p></div></div>
+    <div class="card"><div class="card-body"><h3>查询约束</h3><p>指标与索引白名单、最大时间窗、最大结果数、字段脱敏、限流与超时。</p></div></div>
+    <div class="card"><div class="card-body"><h3>完整审计</h3><p>记录用户问题、模型、工具名、参数摘要、耗时、返回量和诊断引用，不记录密钥。</p></div></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="label">报告必须可核验</div>
+  <div class="mockup">
+    <div class="mockup-header">示例输出结构</div>
+    <div class="mockup-body">
+      <p><strong>已确认事实：</strong>order-consumer Lag 在 14:05–14:12 从 120 升至 18,430；同一窗口数据库连接池等待 P95 超过 2 秒。</p>
+      <p><strong>根因候选：</strong>订单消费实例连接池耗尽导致处理速率下降（高置信度）。</p>
+      <p><strong>证据引用：</strong>[metric:kafka_lag#时间窗] [metric:hikari_pending#时间窗] [logs:order-service#traceId]</p>
+      <p><strong>处置建议：</strong>人工检查慢 SQL 与连接池配置；Agent 不自动修改配置、不重放消息。</p>
+      <p><strong>未知项：</strong>若证据不足，明确列出还需哪些指标或日志，不编造确定结论。</p>
+    </div>
+  </div>
+</div>
+
+<div class="pros-cons">
+  <div class="pros">
+    <h4>验收故障样例</h4>
+    <ul>
+      <li>Kafka 消费者 Lag 激增</li>
+      <li>Outbox 投递任务停滞</li>
+      <li>库存预占与订单状态不一致</li>
+      <li>支付回调重复与迟到</li>
+      <li>Sentinel 熔断导致试算失败</li>
+    </ul>
+  </div>
+  <div class="cons">
+    <h4>首版禁止能力</h4>
+    <ul>
+      <li>执行 SQL、Shell 或任意 PromQL</li>
+      <li>修改 Nacos / Sentinel 配置</li>
+      <li>自动补偿、退款或消息重放</li>
+      <li>把原始手机号、地址、令牌送入模型</li>
+    </ul>
+  </div>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="approve-ai-ops" onclick="toggleSelect(this)">
+    <div class="letter">✓</div>
+    <div class="content"><h3>AI 运维边界正确</h3><p>按此进入最终分阶段交付与验收设计。</p></div>
+  </div>
+  <div class="option" data-choice="revise-ai-ops" onclick="toggleSelect(this)">
+    <div class="letter">↻</div>
+    <div class="content"><h3>需要调整</h3><p>点击后说明希望修改的 MCP 工具、Agent 流程或权限边界。</p></div>
+  </div>
+</div>
